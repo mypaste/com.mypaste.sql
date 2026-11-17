@@ -1,6 +1,29 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+<!--
+  SQL Toolkit bundles sqlriver (https://github.com/vinsidious/sqlriver) for
+  parsing and layout. sqlriver is Copyright (c) 2026 Vince Coppola and is
+  distributed under the MIT License:
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+-->
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,7 +34,8 @@
    * the host's resolved tokens (D-1042/D-1043) and corners from the host's
    * ladder (D-1099); the page's own palette only stands in for an older host.
    * One header band carries the document and its actions, one toolbar carries
-   * the three layout choices, and the editor fills what is left.
+   * the two layout choices, and the editor shares the rest with the findings
+   * rail.
    */
   :root {
     color-scheme: light;
@@ -97,41 +121,39 @@
   .doc-id {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     min-width: 0;
     flex: 1;
   }
   .doc-icon {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     flex: none;
     color: var(--accent);
   }
   .doc-kind {
+    flex: none;
+    padding: 2px 6px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xs);
+    color: var(--muted);
     font-family: var(--mono);
     font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: var(--accent);
-    padding: 2px 5px 1px;
-    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-    border-radius: var(--radius-xs);
-    flex: none;
+    font-weight: 600;
+    letter-spacing: 0.04em;
   }
   .doc-title {
     margin: 0;
-    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 13px;
     font-weight: 600;
-    letter-spacing: 0.01em;
   }
   .doc-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     flex: none;
   }
   .action {
@@ -177,7 +199,7 @@
   }
   .doc-close .icon { width: 13px; height: 13px; }
 
-  /* Toolbar: the three layout choices, one row of 28px controls. */
+  /* Toolbar: the layout choices, one row of 28px controls. */
   .toolbar {
     display: flex;
     align-items: center;
@@ -203,37 +225,40 @@
     padding: 0 22px 0 8px;
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
-    background-color: var(--surface);
+    background: var(--surface);
     color: var(--ink);
     font-size: 11px;
     font-weight: 500;
-    appearance: none;
-    background-image:
-      linear-gradient(45deg, transparent 50%, var(--muted) 50%),
-      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-    background-position: calc(100% - 11px) 11px, calc(100% - 7px) 11px;
-    background-size: 4px 4px, 4px 4px;
-    background-repeat: no-repeat;
   }
   .field select:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 1px;
   }
+  .toolbar-note {
+    color: var(--muted);
+    font-size: 11px;
+  }
   .toolbar-spacer { flex: 1; }
   .counts {
     color: var(--muted);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.03em;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
 
-  /* The editor fills the rest: gutter, painted copy, and the real textarea. */
+  /* The editor and the findings rail share the rest of the frame. */
   .workspace {
     flex: 1;
     min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 264px);
+    gap: 10px;
+    margin: 12px 14px 0;
+  }
+  .editor-pane {
     display: flex;
-    margin: 12px 14px;
+    min-width: 0;
+    min-height: 0;
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     background: var(--editor-bg);
@@ -298,21 +323,18 @@
     background: transparent;
     color: transparent;
     caret-color: var(--editor-ink);
-    -webkit-text-fill-color: transparent;
-    outline: none;
   }
   .code-input::selection {
     background: var(--selection);
-    -webkit-text-fill-color: transparent;
+    color: transparent;
   }
+  .code-input:focus { outline: none; }
   .code-input::placeholder { color: color-mix(in srgb, var(--editor-ink) 42%, transparent); }
-  .code-input:focus-visible { box-shadow: inset 0 0 0 1px var(--focus); }
-
   .tok-keyword { color: var(--tok-keyword); font-weight: 600; }
   .tok-type { color: var(--tok-type); }
   .tok-literal { color: var(--tok-literal); }
+  .tok-function { color: var(--tok-property); }
   .tok-property { color: var(--tok-property); }
-  .tok-function { color: var(--tok-type); }
   .tok-string { color: var(--tok-string); }
   .tok-number { color: var(--tok-number); }
   .tok-comment { color: var(--tok-comment); font-style: italic; }
@@ -321,23 +343,120 @@
     text-underline-offset: 3px;
   }
 
-  /* Status: action feedback on the left, finding and position on the right. */
+  /* Findings rail: a quiet header, one card row per problem. */
+  .problems {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .problems-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 34px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--line);
+    flex: none;
+  }
+  .problems-title {
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .problem-count {
+    min-width: 20px;
+    padding: 1px 6px;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .problem-count.bad {
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
+    color: var(--danger);
+  }
+  .problems-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+    padding: 8px;
+    overflow: auto;
+  }
+  .problem-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .problem-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    padding: 7px 9px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    text-align: left;
+  }
+  .problem-row:hover { border-color: color-mix(in srgb, var(--ink) 26%, transparent); }
+  .problem-row:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+  .problem-where {
+    color: var(--danger);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .problem-message {
+    color: var(--ink);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  .problems-empty {
+    margin: auto;
+    padding: 16px 12px;
+    color: var(--muted);
+    font-size: 11px;
+    text-align: center;
+  }
+  .problems-note {
+    margin: 0;
+    padding: 7px 9px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.45;
+    flex: none;
+  }
+
+  /* Status bar: what the last action said, the first finding, the caret. */
   .statusbar {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     min-height: 30px;
-    padding: 0 16px 8px;
+    padding: 0 16px;
+    border-top: 1px solid var(--line);
+    margin-top: 8px;
     color: var(--muted);
     font-size: 11px;
     flex: none;
-  }
-  .status {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .status.ok { color: var(--success); }
   .status.bad { color: var(--danger); }
@@ -345,38 +464,42 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    flex: none;
-    font-family: var(--mono);
-    font-size: 10px;
+    margin-left: auto;
+    min-width: 0;
   }
   .finding {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    max-width: 46vw;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--danger);
   }
-  .finding::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--danger);
-    flex: none;
-  }
   .finding.clean { color: var(--muted); }
-  .finding.clean::before { background: color-mix(in srgb, var(--muted) 55%, transparent); }
+  #position {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 
-  @media (max-width: 620px) {
-    .action-label { display: none; }
-    .action { padding: 0 7px; }
-    .toolbar { gap: 10px; padding: 6px 12px; }
-    .workspace { margin: 8px; }
-    .gutter { width: 40px; }
-    .finding { max-width: 52vw; }
+  @media (max-width: 720px) {
+    .workspace {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(112px, 34%);
+      gap: 8px;
+    }
+    .toolbar-note { display: none; }
+  }
+  @media (max-height: 520px) {
+    .doc-head { height: 40px; }
+    .toolbar { min-height: 34px; }
+    .statusbar { min-height: 26px; }
   }
   @media (prefers-reduced-motion: no-preference) {
     .action { transition: background-color 120ms ease, color 120ms ease; }
@@ -395,7 +518,7 @@
       <h1 class="doc-title" id="doc-title">等待条目…</h1>
     </div>
     <div class="doc-actions">
-      <button type="button" class="action primary" id="format" title="美化 SQL" aria-label="美化 SQL">
+      <button type="button" class="action primary" id="format" title="按 SQL Style Guide 美化（⌘⇧F）" aria-label="美化 SQL">
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M2 4h7M2 8h5M2 12h9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           <path d="M12.2 3.2 12.8 5l1.8.6-1.8.6-.6 1.8-.6-1.8L9.8 5.6l1.8-.6z" fill="currentColor"/>
@@ -411,8 +534,8 @@
       </button>
       <button type="button" class="action" id="copy" title="复制当前内容" aria-label="复制当前内容">
         <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="5.5" y="5.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.4"/>
-          <path d="M3.5 10.5v-7h7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+          <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
         <span class="action-label">复制</span>
       </button>
@@ -437,32 +560,39 @@
     <label class="field">方言
       <select id="dialect" aria-label="SQL 方言"></select>
     </label>
-    <label class="field">关键字
-      <select id="keyword-case" aria-label="关键字大小写">
-        <option value="preserve">保持原样</option>
-        <option value="upper">大写</option>
-        <option value="lower">小写</option>
+    <label class="field">目标行宽
+      <select id="width" aria-label="目标行宽">
+        <option value="80" selected>80 列</option>
+        <option value="100">100 列</option>
+        <option value="120">120 列</option>
       </select>
     </label>
-    <label class="field">缩进
-      <select id="indent" aria-label="缩进宽度">
-        <option value="2">2 空格</option>
-        <option value="4" selected>4 空格</option>
-        <option value="8">8 空格</option>
-      </select>
-    </label>
+    <span class="toolbar-note">关键字大写、子句右对齐，按 SQL Style Guide</span>
     <span class="toolbar-spacer"></span>
     <span class="counts" id="counts">0 行</span>
   </div>
 
   <main class="workspace">
-    <div class="gutter" id="gutter" aria-hidden="true"><div class="gutter-inner" id="gutter-inner"></div></div>
-    <div class="code-surface">
-      <pre class="highlight" id="highlight" aria-hidden="true"></pre>
-      <textarea class="code-input" id="editor" spellcheck="false" autocomplete="off"
-        autocapitalize="off" wrap="soft" placeholder="打开一条 SQL 条目后，在这里编辑。"
-        aria-label="SQL 文本" aria-describedby="status finding"></textarea>
+    <div class="editor-pane">
+      <div class="gutter" id="gutter" aria-hidden="true"><div class="gutter-inner" id="gutter-inner"></div></div>
+      <div class="code-surface">
+        <pre class="highlight" id="highlight" aria-hidden="true"></pre>
+        <textarea class="code-input" id="editor" spellcheck="false" autocomplete="off"
+          autocapitalize="off" wrap="soft" placeholder="打开一条 SQL 条目后，在这里编辑。"
+          aria-label="SQL 文本" aria-describedby="status finding"></textarea>
+      </div>
     </div>
+    <aside class="problems" aria-label="语法问题">
+      <div class="problems-head">
+        <h2 class="problems-title">问题</h2>
+        <span class="problem-count" id="problem-count" aria-label="问题数量">0</span>
+      </div>
+      <div class="problems-body">
+        <p class="problems-empty" id="problem-empty">没有发现语法问题</p>
+        <div class="problem-list" id="problem-list" role="list"></div>
+      </div>
+      <p class="problems-note" id="problem-note" hidden></p>
+    </aside>
   </main>
 
   <footer class="statusbar">
@@ -473,7 +603,7 @@
     </div>
   </footer>
 
-  <p class="sr-only" hidden>美化、压缩、自动换行、语法高亮与诊断都在本页完成，不联网，也不执行 SQL。复制由宿主写入剪贴板。</p>
+  <p class="sr-only" hidden>美化由 sqlriver 按 SQL Style Guide 完成；高亮、压缩与诊断都在本页进行，不联网，也不执行 SQL。复制由宿主写入剪贴板。</p>
 <script>
 <!--bundle-->
 </script>

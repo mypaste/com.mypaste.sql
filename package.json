@@ -5,6 +5,9 @@
   "scripts": {
     "build": "node scripts/build.mjs"
   },
+  "dependencies": {
+    "sqlriver": "^2.0.0"
+  },
   "devDependencies": {
     "esbuild": "0.25.10"
   }

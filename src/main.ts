@@ -2,22 +2,29 @@
  * The SQL workspace page.
  *
  * The host opens this surface for a text entity and delivers its text. From
- * then on the page owns everything: it scans the buffer once, paints the
- * syntax colours, derives bracket and clause findings from the same token
- * stream, and lays the tokens out again when the toolbar asks it to. Nothing
- * is executed, no process runs and no request leaves the frame. Copying is a
- * host action; the page posts `copy` and never touches the clipboard itself.
+ * then on the page owns everything: it paints the syntax colours from its own
+ * dialect vocabularies, and hands the buffer to sqlriver — a zero-dependency
+ * parser and formatter that implements the SQL Style Guide — for the grammar.
+ * sqlriver lays the SQL out (keywords upper-cased, clauses right-aligned) and
+ * reports what it could not parse; the page keeps the unparseable statements
+ * exactly as written and lists the findings beside the editor.
  *
- * Every value reaches the DOM through `textContent` or `textarea.value`, never
- * HTML, so SQL that contains markup stays text.
+ * Nothing is executed, no process runs and no request leaves the frame.
+ * Copying is a host action; the page posts `copy` and never touches the
+ * clipboard itself. Every value reaches the DOM through text nodes or
+ * `textarea.value`, never HTML, so SQL that contains markup stays text.
  */
 
-import { analyzeSql, firstError, type Analysis } from "./analyze";
 import { connectSurface } from "./bridge";
 import { compressSql } from "./compress";
 import { DIALECTS, dialectById } from "./dialect";
-import { formatSql, parseFormatOptions } from "./format";
-import { positionOf, type SqlToken } from "./tokenize";
+import { formatSql, scanSql, type SqlProblem } from "./engine";
+import { positionOf, tokenizeSql, type SqlToken } from "./tokenize";
+
+/** Above this size the grammar check would stall typing; the rail says so. */
+const MAX_CHECK_CHARS = 200_000;
+/** Long enough that a burst of typing is one parse, short enough to feel live. */
+const CHECK_DELAY = 220;
 
 function one<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -27,8 +34,7 @@ function one<T extends Element>(selector: string): T {
 
 const docTitle = one<HTMLHeadingElement>("#doc-title");
 const dialectSelect = one<HTMLSelectElement>("#dialect");
-const keywordCase = one<HTMLSelectElement>("#keyword-case");
-const indent = one<HTMLSelectElement>("#indent");
+const widthSelect = one<HTMLSelectElement>("#width");
 const counts = one<HTMLSpanElement>("#counts");
 const gutter = one<HTMLDivElement>("#gutter");
 const gutterInner = one<HTMLDivElement>("#gutter-inner");
@@ -37,6 +43,10 @@ const editor = one<HTMLTextAreaElement>("#editor");
 const status = one<HTMLSpanElement>("#status");
 const finding = one<HTMLSpanElement>("#finding");
 const position = one<HTMLSpanElement>("#position");
+const problemCount = one<HTMLSpanElement>("#problem-count");
+const problemEmpty = one<HTMLParagraphElement>("#problem-empty");
+const problemList = one<HTMLDivElement>("#problem-list");
+const problemNote = one<HTMLParagraphElement>("#problem-note");
 const formatButton = one<HTMLButtonElement>("#format");
 const compressButton = one<HTMLButtonElement>("#compress");
 const copyButton = one<HTMLButtonElement>("#copy");
@@ -52,10 +62,17 @@ for (const dialect of DIALECTS) {
   dialectSelect.append(option);
 }
 
-/** The one text the page is showing, and what the last transformation replaced. */
-let current: Analysis = { tokens: [], diagnostics: [] };
+/** The tokens of the text being shown; painting and compression read them. */
+let tokens: SqlToken[] = [];
+/** What the last grammar check found. */
+let problems: readonly SqlProblem[] = [];
+/** Statements sqlriver does not model, left verbatim. */
+let unsupported = 0;
+/** The buffer was too large to scan; the rail says so instead of lying. */
+let skipped = false;
 let previousText: string | null = null;
 let scheduled = 0;
+let checkTimer = 0;
 let renderedLines = 0;
 let renderedOccupancy = "";
 
@@ -71,6 +88,11 @@ function currentDialect() {
   return dialectById(dialectSelect.value);
 }
 
+function selectedWidth(): number {
+  const value = Number(widthSelect.value);
+  return Number.isFinite(value) && value >= 40 && value <= 400 ? value : 80;
+}
+
 function setStatus(message: string, tone: "ok" | "bad" | "" = ""): void {
   status.textContent = message;
   status.className = tone === "" ? "status" : `status ${tone}`;
@@ -81,32 +103,21 @@ function caretPosition(): void {
   position.textContent = `${at.line}:${at.column}`;
 }
 
-function errorLines(analysis: Analysis): Set<number> {
-  return new Set(
-    analysis.diagnostics
-      .filter((entry) => entry.severity === "error")
-      .map((entry) => entry.line),
-  );
-}
-
 function tokenClass(token: SqlToken): string {
   if (token.error) return "tok-error";
   if (token.kind === "") return "";
   return `tok-${token.kind}`;
 }
 
-/** Paints the token stream under the textarea, merging adjacent same-colour runs. */
-function renderHighlight(text: string): void {
-  if (text.length > 400_000) {
-    highlight.textContent = `${text}\n`;
-    return;
-  }
+/** Paints the token stream into spans; the textarea above stays transparent. */
+function renderHighlight(): void {
   const fragment = document.createDocumentFragment();
   let pending = "";
-  let pendingClass = "";
+  let pendingClass: string | null = null;
+
   const flush = (): void => {
     if (pending === "") return;
-    if (pendingClass === "") {
+    if (pendingClass === null || pendingClass === "") {
       fragment.append(document.createTextNode(pending));
     } else {
       const span = document.createElement("span");
@@ -116,7 +127,8 @@ function renderHighlight(text: string): void {
     }
     pending = "";
   };
-  for (const token of current.tokens) {
+
+  for (const token of tokens) {
     const className = tokenClass(token);
     if (className !== pendingClass) {
       flush();
@@ -171,25 +183,32 @@ function wrappedRows(target: HTMLElement, text: string): number[] {
     const length = lines[index]!.length;
     const start = locate(cursor);
     const end = locate(cursor + length);
-    if (start !== null && end !== null) {
+    cursor += length + 1; // the newline belongs to no line
+    if (start === null || end === null) continue;
+    try {
       range.setStart(start.node, start.offset);
       range.setEnd(end.node, end.offset);
-      const tops = new Set<number>();
-      const rects = range.getClientRects();
-      for (let rectIndex = 0; rectIndex < rects.length; rectIndex += 1) {
-        const rect = rects.item(rectIndex);
-        if (rect !== null) tops.add(Math.round(rect.top));
-      }
-      if (tops.size > 1) rows[index] = tops.size;
+    } catch {
+      continue;
     }
-    cursor += length + 1; // the newline belongs to no line
+    const tops = new Set<number>();
+    const rects = range.getClientRects();
+    for (let rectIndex = 0; rectIndex < rects.length; rectIndex += 1) {
+      const rect = rects.item(rectIndex);
+      if (rect !== null) tops.add(Math.round(rect.top));
+    }
+    if (tops.size > 1) rows[index] = tops.size;
   }
   return rows;
 }
 
+function errorLines(): Set<number> {
+  return new Set(problems.map((entry) => entry.line));
+}
+
 function renderGutter(text: string): void {
   const lineCount = text.split("\n").length;
-  const marks = errorLines(current);
+  const marks = errorLines();
   const occupancy = wrapping
     ? wrappedRows(highlight, text).join(",")
     : "";
@@ -219,14 +238,60 @@ function renderGutter(text: string): void {
   counts.textContent = `${lineCount} 行 · ${[...text].length} 字符`;
 }
 
+/** The findings rail: one card row per problem, clickable to reveal it. */
+function renderProblems(): void {
+  problemCount.textContent = String(problems.length);
+  problemCount.classList.toggle("bad", problems.length > 0);
+
+  const fragment = document.createDocumentFragment();
+  for (const problem of problems) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "problem-row";
+    row.setAttribute("role", "listitem");
+    row.setAttribute("aria-label", `跳转到第 ${problem.line} 行第 ${problem.column} 列`);
+
+    const where = document.createElement("span");
+    where.className = "problem-where";
+    where.textContent = `${problem.line}:${problem.column}`;
+
+    const message = document.createElement("span");
+    message.className = "problem-message";
+    message.textContent = problem.message;
+
+    row.append(where, message);
+    row.addEventListener("click", () => reveal(problem));
+    fragment.append(row);
+  }
+  problemList.replaceChildren(fragment);
+
+  problemEmpty.hidden = problems.length > 0;
+  if (problems.length === 0) {
+    problemEmpty.textContent = skipped
+      ? "内容过长，未做语法检查"
+      : "没有发现语法问题";
+  }
+  problemNote.hidden = unsupported === 0;
+  if (unsupported > 0) {
+    problemNote.textContent = `${unsupported} 条语句未识别，已原样保留`;
+  }
+}
+
 function renderFinding(): void {
-  const first = current.diagnostics[0];
-  if (first === undefined) {
-    finding.textContent = editor.value.trim() === "" ? "等待 SQL" : "没有语法问题";
+  if (skipped) {
+    finding.textContent = "内容过长，未做语法检查";
     finding.className = "finding clean";
     return;
   }
-  const extra = current.diagnostics.length > 1 ? ` · 另有 ${current.diagnostics.length - 1} 个` : "";
+  const first = problems[0];
+  if (first === undefined) {
+    if (editor.value.trim() === "") finding.textContent = "等待 SQL";
+    else if (unsupported > 0) finding.textContent = `${unsupported} 条语句未识别`;
+    else finding.textContent = "没有语法问题";
+    finding.className = "finding clean";
+    return;
+  }
+  const extra = problems.length > 1 ? ` · 另有 ${problems.length - 1} 个` : "";
   finding.textContent = `第 ${first.line} 行第 ${first.column} 列 · ${first.message}${extra}`;
   finding.className = "finding";
 }
@@ -239,8 +304,8 @@ function syncScroll(): void {
 
 function render(): void {
   scheduled = 0;
-  current = analyzeSql(editor.value, currentDialect());
-  renderHighlight(editor.value);
+  tokens = tokenizeSql(editor.value, currentDialect());
+  renderHighlight();
   renderGutter(editor.value);
   renderFinding();
   caretPosition();
@@ -249,6 +314,7 @@ function render(): void {
   formatButton.disabled = empty;
   compressButton.disabled = empty;
   copyButton.disabled = empty;
+  scheduleCheck();
 }
 
 function scheduleRender(): void {
@@ -256,22 +322,50 @@ function scheduleRender(): void {
   scheduled = raf(() => render());
 }
 
+/** The grammar check is debounced: typing stays ahead of the parser. */
+function scheduleCheck(): void {
+  if (checkTimer !== 0) clearTimeout(checkTimer);
+  checkTimer = window.setTimeout(runCheck, CHECK_DELAY);
+}
+
+function runCheck(): void {
+  checkTimer = 0;
+  const text = editor.value;
+  skipped = text.length > MAX_CHECK_CHARS;
+  if (skipped) {
+    problems = [];
+    unsupported = 0;
+  } else {
+    const scan = scanSql(text, currentDialect().id);
+    problems = scan.problems;
+    unsupported = scan.unsupported;
+  }
+  renderProblems();
+  renderFinding();
+  renderGutter(text);
+}
+
 function replaceText(next: string, message: string): void {
   const caret = Math.min(editor.selectionStart, next.length);
   previousText = editor.value;
   editor.value = next;
   editor.setSelectionRange(caret, caret);
+  skipped = false;
   render();
-  setStatus(message, "ok");
+  renderProblems();
+  setStatus(message, problems.length === 0 ? "ok" : "");
 }
 
-function refuse(entry: NonNullable<ReturnType<typeof firstError>>): void {
-  setStatus(`第 ${entry.line} 行第 ${entry.column} 列：${entry.message}`, "bad");
-  const offset = offsetOf(entry.line, entry.column);
-  const end = advance(offset, entry.length);
+/** Moves the caret onto a finding and selects the token it names. */
+function reveal(problem: SqlProblem): void {
+  const start = offsetOf(problem.line, problem.column);
+  const end = advance(start, problem.length);
   editor.focus();
-  editor.setSelectionRange(offset, end);
+  editor.setSelectionRange(start, end);
   caretPosition();
+  const lineHeight = 21;
+  editor.scrollTop = Math.max(0, (problem.line - 3) * lineHeight);
+  syncScroll();
 }
 
 /** The UTF-16 offset reached by advancing `count` runes from `offset`. */
@@ -321,38 +415,51 @@ function setWrapping(next: boolean): void {
 }
 
 function runFormat(): void {
-  if (editor.value.trim() === "") return;
-  const analysis = analyzeSql(editor.value, currentDialect());
-  const error = firstError(analysis.diagnostics);
-  if (error !== null) {
-    refuse(error);
+  const text = editor.value;
+  if (text.trim() === "") return;
+  const result = formatSql(text, currentDialect().id, selectedWidth());
+  problems = result.problems;
+  unsupported = result.unsupported;
+  skipped = false;
+  if (result.text === text) {
+    renderProblems();
+    renderFinding();
+    renderGutter(text);
+    if (problems.length > 0) {
+      const first = problems[0]!;
+      setStatus(`第 ${first.line} 行第 ${first.column} 列：${first.message}`, "bad");
+      reveal(first);
+    } else {
+      setStatus("已经是风格指南的样子");
+    }
     return;
   }
-  const next = formatSql(
-    analysis,
-    parseFormatOptions(keywordCase.value, indent.value),
+  replaceText(
+    result.text,
+    problems.length > 0 ? `已美化 · ${problems.length} 个问题仍待修正` : "已美化",
   );
-  if (next === editor.value) {
-    setStatus("已经是美化后的样子");
-    return;
-  }
-  replaceText(next, "已美化");
 }
 
 function runCompress(): void {
-  if (editor.value.trim() === "") return;
-  const analysis = analyzeSql(editor.value, currentDialect());
-  const error = firstError(analysis.diagnostics);
-  if (error !== null) {
-    refuse(error);
+  const text = editor.value;
+  if (text.trim() === "") return;
+  const current = tokenizeSql(text, currentDialect());
+  if (current.some((token) => token.error)) {
+    const lexical = problems[0];
+    if (lexical !== undefined) {
+      setStatus(`第 ${lexical.line} 行第 ${lexical.column} 列：${lexical.message}`, "bad");
+      reveal(lexical);
+    } else {
+      setStatus("存在未闭合的字符串或注释，无法压缩", "bad");
+    }
     return;
   }
-  const result = compressSql(analysis);
+  const result = compressSql(current);
   if (!result.ok) {
     setStatus(result.message, "bad");
     return;
   }
-  if (result.text === editor.value) {
+  if (result.text === text) {
     setStatus("已经是压缩后的样子");
     return;
   }
@@ -380,10 +487,13 @@ closeButton.addEventListener("click", () => bridge.close());
 
 dialectSelect.addEventListener("change", () => {
   setStatus("");
+  renderedLines = 0;
+  renderedOccupancy = "";
   render();
 });
-keywordCase.addEventListener("change", () => setStatus(""));
-indent.addEventListener("change", () => setStatus(""));
+widthSelect.addEventListener("change", () => {
+  setStatus(`目标行宽 ${selectedWidth()} 列`);
+});
 
 editor.addEventListener("input", () => {
   previousText = null;

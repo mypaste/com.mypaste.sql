@@ -8,7 +8,7 @@
  * not silently drop it.
  */
 
-import type { Analysis } from "./analyze";
+import type { SqlToken } from "./tokenize";
 
 export type CompressResult =
   | { readonly ok: true; readonly text: string }
@@ -42,9 +42,9 @@ function needsSeparator(previous: string, next: string): boolean {
   return isWordRune(last) || isWordRune(first);
 }
 
-export function compressSql(analysis: Analysis): CompressResult {
+export function compressSql(tokens: readonly SqlToken[]): CompressResult {
   const units: string[] = [];
-  for (const token of analysis.tokens) {
+  for (const token of tokens) {
     if (token.kind === "comment") {
       if (token.text.startsWith("/*+")) units.push(token.text);
       continue;
