@@ -3,8 +3,8 @@
   "kind": "ui",
   "id": "com.mypaste.sql",
   "name": "SQL Toolkit",
-  "version": "5.1.1",
-  "description": "七种方言的 SQL 工作区，只在正文是 SQL 语句时出现：按 SQL Style Guide 美化（关键字大写、子句右对齐、可选目标行宽），编辑器高亮、语法问题列表与压缩都在页面内完成；解析不了的语句原样保留并标出位置，不执行 SQL、不联网；复制由宿主写入剪贴板。",
+  "version": "5.3.0",
+  "description": "七种方言的 SQL 工作区，只在正文是 SQL 语句时出现：按 SQL Style Guide 美化（关键字大写、子句右对齐、可选目标行宽），编辑器高亮、语法问题列表与压缩都在页面内完成；解析不了的语句原样保留并标出位置，不执行 SQL、不联网；复制由宿主写入剪贴板。设置 › 快捷键里的「SQL Toolkit」一行（默认 Ctrl+Alt+S）直接把当前条目打开成这个工作区。",
   "capabilities": [
     "entity.read",
     "clipboard.write"
@@ -16,6 +16,7 @@
     ],
     "role": "open",
     "chrome": "page",
+    "shortcut": "Ctrl+Alt+S",
     "match": {
       "prefix": [
         "select",

@@ -7,7 +7,8 @@
  * parser and formatter that implements the SQL Style Guide — for the grammar.
  * sqlriver lays the SQL out (keywords upper-cased, clauses right-aligned) and
  * reports what it could not parse; the page keeps the unparseable statements
- * exactly as written and lists the findings beside the editor.
+ * exactly as written and, only when there is something to report, lists the
+ * findings beside the editor.
  *
  * Nothing is executed, no process runs and no request leaves the frame.
  * Copying is a host action; the page posts `copy` and never touches the
@@ -47,6 +48,11 @@ const problemCount = one<HTMLSpanElement>("#problem-count");
 const problemEmpty = one<HTMLParagraphElement>("#problem-empty");
 const problemList = one<HTMLDivElement>("#problem-list");
 const problemNote = one<HTMLParagraphElement>("#problem-note");
+const workspace = one<HTMLElement>("#workspace");
+const problemsRail = one<HTMLElement>("#problems");
+const idle = one<HTMLDivElement>("#idle");
+const idleTitle = one<HTMLParagraphElement>("#idle-title");
+const idleHint = one<HTMLParagraphElement>("#idle-hint");
 const formatButton = one<HTMLButtonElement>("#format");
 const compressButton = one<HTMLButtonElement>("#compress");
 const copyButton = one<HTMLButtonElement>("#copy");
@@ -96,6 +102,12 @@ function selectedWidth(): number {
 function setStatus(message: string, tone: "ok" | "bad" | "" = ""): void {
   status.textContent = message;
   status.className = tone === "" ? "status" : `status ${tone}`;
+}
+
+/** What the empty pane says; each mount explains its own way in and out. */
+function setIdle(title: string, hint: string): void {
+  idleTitle.textContent = title;
+  idleHint.textContent = hint;
 }
 
 function caretPosition(): void {
@@ -238,6 +250,16 @@ function renderGutter(text: string): void {
   counts.textContent = `${lineCount} 行 · ${[...text].length} 字符`;
 }
 
+/**
+ * The rail exists only when it has something to report; a clean or empty
+ * document hands the whole width back to the editor instead of an empty card.
+ */
+function syncRail(): void {
+  const hasFindings = problems.length > 0 || unsupported > 0 || skipped;
+  problemsRail.hidden = !hasFindings;
+  workspace.dataset.rail = hasFindings ? "open" : "closed";
+}
+
 /** The findings rail: one card row per problem, clickable to reveal it. */
 function renderProblems(): void {
   problemCount.textContent = String(problems.length);
@@ -265,7 +287,9 @@ function renderProblems(): void {
   }
   problemList.replaceChildren(fragment);
 
-  problemEmpty.hidden = problems.length > 0;
+  syncRail();
+
+  problemEmpty.hidden = problems.length > 0 || unsupported > 0;
   if (problems.length === 0) {
     problemEmpty.textContent = skipped
       ? "内容过长，未做语法检查"
@@ -278,22 +302,12 @@ function renderProblems(): void {
 }
 
 function renderFinding(): void {
-  if (skipped) {
-    finding.textContent = "内容过长，未做语法检查";
-    finding.className = "finding clean";
-    return;
-  }
-  const first = problems[0];
-  if (first === undefined) {
-    if (editor.value.trim() === "") finding.textContent = "等待 SQL";
-    else if (unsupported > 0) finding.textContent = `${unsupported} 条语句未识别`;
-    else finding.textContent = "没有语法问题";
-    finding.className = "finding clean";
-    return;
-  }
-  const extra = problems.length > 1 ? ` · 另有 ${problems.length - 1} 个` : "";
-  finding.textContent = `第 ${first.line} 行第 ${first.column} 列 · ${first.message}${extra}`;
-  finding.className = "finding";
+  // Every finding has a home in the rail, which opens whenever there is one;
+  // the bar speaks only for a clean, non-empty document, so the size and caret
+  // keep their room. An empty buffer says nothing here — the pane says it.
+  const clean = !skipped && problems.length === 0 && unsupported === 0;
+  finding.textContent = clean && editor.value.trim() !== "" ? "没有语法问题" : "";
+  finding.className = "finding clean";
 }
 
 function syncScroll(): void {
@@ -307,9 +321,14 @@ function render(): void {
   tokens = tokenizeSql(editor.value, currentDialect());
   renderHighlight();
   renderGutter(editor.value);
+  syncRail();
   renderFinding();
   caretPosition();
   syncScroll();
+  // The empty pane's invitation belongs to an empty buffer: the first word
+  // takes it away, and deleting back to empty brings it back. Whitespace does
+  // not count as content — a blank entry still says it is blank.
+  idle.hidden = editor.value.trim() !== "";
   const empty = editor.value.trim() === "";
   formatButton.disabled = empty;
   compressButton.disabled = empty;
@@ -528,24 +547,25 @@ editor.addEventListener("keydown", (event) => {
 
 // A menu page has no entry (D-1234): the reader types or pastes SQL and the
 // copy writes both the clipboard and a new record. The host tab already names
-// the page, so the header drops its waiting title for the start hint.
+// the page (D-1231), so the identity block gives way to the start state.
 bridge.onMenu(() => {
   document.body.dataset.mode = "menu";
   docTitle.textContent = "SQL";
   document.title = "SQL";
-  setStatus("粘贴或输入 SQL；复制会记成一条新记录");
+  setIdle("粘贴或输入 SQL", "在页面里高亮与检查语法，⌘⇧F 按 SQL Style Guide 美化；复制会写入剪贴板，并记成一条新记录。");
+  setStatus("");
   editor.focus();
 });
 
 bridge.onItem(({ item }) => {
   docTitle.textContent = item.title.trim() === "" ? "未命名 SQL" : item.title;
   document.title = `${item.title.trim() === "" ? "SQL" : item.title} · SQL`;
+  setIdle("这条条目是空的", "粘贴或输入 SQL，⌘⇧F 美化；复制只写入剪贴板。");
   editor.value = item.text;
   previousText = null;
   renderedLines = 0;
   render();
-  if (item.text.trim() === "") setStatus("这条条目是空的", "");
-  else editor.focus();
+  if (item.text.trim() !== "") editor.focus();
 });
 
 // The host never sees a key pressed inside this frame, so Esc is the page's
@@ -556,5 +576,5 @@ document.addEventListener("keydown", (event) => {
   bridge.close();
 });
 
-setStatus("就绪");
+setStatus("");
 setWrapping(true);

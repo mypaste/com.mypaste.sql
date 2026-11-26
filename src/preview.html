@@ -33,14 +33,20 @@
    * The SQL workspace, drawn by the page itself (D-1097). Colours come from
    * the host's resolved tokens (D-1042/D-1043) and corners from the host's
    * ladder (D-1099); the page's own palette only stands in for an older host.
-   * One header band carries the document and its actions, one toolbar carries
-   * the two layout choices, and the editor shares the rest with the findings
-   * rail.
+   * One band carries the document, its two layout choices and its actions; the
+   * editor takes the rest, and only a document with findings gives the rail a
+   * column. The status bar reports size, caret and the first finding.
+   *
+   * The page is an editor shell, the same one the host's own document pages
+   * draw: two chrome strips (the band and the status bar) close the top and
+   * bottom, and the canvas between them runs edge to edge — no card floating
+   * in a margin. Lines separate zones, never boxes: one under the band, one
+   * over the status bar, and inside the canvas the softer editor-ink hairlines
+   * where the gutter and the findings rail meet the code.
    */
   :root {
     color-scheme: light;
     --bg: var(--mp-surface-solid, #f6f2ea);
-    --surface: var(--mp-surface-raised, #fbf8f2);
     --ink: var(--mp-ink, #241f19);
     --muted: var(--mp-ink-soft, #776b5c);
     --line: var(--mp-line, rgba(60, 45, 25, 0.16));
@@ -65,7 +71,6 @@
   :root[data-scheme="dark"] {
     color-scheme: dark;
     --bg: var(--mp-surface-solid, #171412);
-    --surface: var(--mp-surface-raised, #201c18);
     --ink: var(--mp-ink, #f0e6d9);
     --muted: var(--mp-ink-soft, #9a8c7b);
     --line: var(--mp-line, rgba(255, 236, 214, 0.14));
@@ -97,6 +102,9 @@
   body {
     display: flex;
     flex-direction: column;
+    /* The page's ground carries the chrome; the code paper is the canvas
+       between the two strips. Neither strip paints a fill of its own, so the
+       band is never the host's white raised card pasted on the page. */
     background: var(--bg);
     color: var(--ink);
     font-family: var(--font);
@@ -107,24 +115,44 @@
   button { cursor: pointer; }
   .icon { display: block; width: 14px; height: 14px; }
 
-  /* Document header: one 46px band, the name at the left, tools at the right. */
+  /* One 46px band carries the document, its two layout choices and its tools:
+     the page has a single row of chrome, and the status bar closes the frame.
+     Neither strip paints a fill — the page's ground is already the chrome. */
   .doc-head {
     display: flex;
     align-items: center;
     gap: 12px;
-    height: 46px;
+    min-height: 46px;
     padding: 0 10px 0 16px;
     border-bottom: 1px solid var(--line);
-    background: var(--surface);
     flex: none;
   }
   .doc-id {
     display: flex;
     align-items: center;
+    align-self: stretch;
     gap: 8px;
     min-width: 0;
-    flex: 1;
+    flex: 1 1 auto;
+    position: relative;
   }
+  /* The document's own mark, the accent rule the host's pages give the name
+     they hold. A menu page has no name of its own — the tab above carries it
+     and is already marked — so the rule stays away. */
+  body:not([data-mode="menu"]) .doc-id::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 8px;
+    bottom: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+  /* A menu page sits inside the host's tab and canvas (D-1234): the tab already
+     names the page and is already marked (D-1231), so the identity block stands
+     down and the band's left belongs to the layout choices. */
+  body[data-mode="menu"] .doc-id { display: none; }
+  body[data-mode="menu"] .doc-options { margin-left: 0; margin-right: auto; }
   .doc-icon {
     width: 16px;
     height: 16px;
@@ -134,8 +162,8 @@
   .doc-kind {
     flex: none;
     padding: 2px 6px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-xs);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--muted) 12%, transparent);
     color: var(--muted);
     font-family: var(--mono);
     font-size: 10px;
@@ -144,12 +172,24 @@
   }
   .doc-title {
     margin: 0;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 13px;
     font-weight: 600;
   }
+  /* The two layout choices sit in the band beside the document, not on a
+     toolbar row of their own: one row of chrome, then the editor. */
+  .doc-options {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: none;
+    margin-left: auto;
+  }
+  /* Only one block owns the gap before the tools: a menu page has no title, and
+     two auto margins would strand the pickers in the middle of the band. */
   .doc-actions {
     display: flex;
     align-items: center;
@@ -181,91 +221,80 @@
     color: var(--accent-ink);
   }
   .action.primary:hover { background: var(--accent); filter: brightness(1.06); color: var(--accent-ink); }
+  /* Wrapping is a view state, not the page's primary action: it tints rather
+     than fills, so 美化 stays the only filled control in the band. */
   .action.toggle[aria-pressed="true"] {
-    background: var(--accent);
-    color: var(--accent-ink);
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
+    color: var(--accent);
   }
   .action.toggle[aria-pressed="true"]:hover {
-    background: var(--accent);
-    filter: brightness(1.06);
-    color: var(--accent-ink);
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--accent);
   }
   .action[disabled] { opacity: 0.45; cursor: default; }
-  .doc-close {
-    margin-left: 4px;
-    padding-left: 10px;
-    border-left: 1px solid var(--line);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  }
+  .doc-close { margin-left: 6px; }
   .doc-close .icon { width: 13px; height: 13px; }
   /* A menu page sits inside the host's tab and canvas (D-1234): closing the
      window is the host's own control, and a second X would do the same thing
      from inside the page. */
   body[data-mode="menu"] .doc-close { display: none; }
 
-  /* Toolbar: the layout choices, one row of 28px controls. */
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    min-height: 40px;
-    padding: 0 16px;
-    border-bottom: 1px solid var(--line);
-    background: color-mix(in srgb, var(--surface) 55%, var(--bg));
-    flex: none;
-    flex-wrap: wrap;
-  }
+  /* The two layout choices read as quiet pickers beside the tools, not as a
+     form: the current value plus a chevron, no box around them. Their labels
+     live for screen readers only — in this band "SQL 标准" and "80 列" say
+     what they are. */
   .field {
     display: flex;
     align-items: center;
-    gap: 6px;
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 600;
     white-space: nowrap;
   }
   .field select {
+    appearance: none;
+    -webkit-appearance: none;
     height: 26px;
-    padding: 0 22px 0 8px;
-    border: 1px solid var(--line);
+    padding: 0 20px 0 6px;
+    border: 0;
     border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--ink);
+    background-color: transparent;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6' viewBox='0 0 9 6' fill='none'%3E%3Cpath d='M1 1.2l3.5 3.5L8 1.2' stroke='%23948a7c' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 5px center;
+    color: var(--muted);
     font-size: 11px;
     font-weight: 500;
+  }
+  .field select:hover {
+    background-color: color-mix(in srgb, var(--ink) 6%, transparent);
+    color: var(--ink);
   }
   .field select:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 1px;
   }
-  .toolbar-note {
-    color: var(--muted);
-    font-size: 11px;
-  }
-  .toolbar-spacer { flex: 1; }
-  .counts {
-    color: var(--muted);
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-
-  /* The editor and the findings rail share the rest of the frame. */
+  /* The canvas runs from the band to the status bar without a margin of its
+     own. The rail exists only when it has something to say; a clean or empty
+     document gets the whole width. */
   .workspace {
     flex: 1;
     min-height: 0;
+    /* The canvas is the code paper (D-1046), edge to edge between the band and
+       the status bar; the page's ground around it is the chrome. */
+    background: var(--editor-bg);
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(220px, 264px);
-    gap: 10px;
-    margin: 12px 14px 0;
+    gap: 0;
   }
+  .workspace[data-rail="closed"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  /* The canvas is the paper: the page already paints it, so the pane adds no
+     fill and no corner of its own. */
   .editor-pane {
     display: flex;
     min-width: 0;
     min-height: 0;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    background: var(--editor-bg);
+    background: transparent;
     overflow: hidden;
     position: relative;
   }
@@ -273,8 +302,7 @@
     width: 48px;
     flex: none;
     padding: 12px 6px 12px 0;
-    border-right: 1px solid var(--line);
-    background: color-mix(in srgb, var(--editor-bg) 80%, var(--surface));
+    border-right: 1px solid color-mix(in srgb, var(--editor-ink) 13%, transparent);
     overflow: hidden;
     user-select: none;
   }
@@ -334,6 +362,35 @@
   }
   .code-input:focus { outline: none; }
   .code-input::placeholder { color: color-mix(in srgb, var(--editor-ink) 42%, transparent); }
+  /* An empty editor says what it is for in the middle of its pane, rather than
+     opening as a blank sheet with one grey line in the corner. The layer takes
+     no pointer events, so a click anywhere lands in the textarea underneath. */
+  .idle {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 32px 24px;
+    text-align: center;
+    pointer-events: none;
+  }
+  .idle[hidden] { display: none; }
+  .idle-title {
+    margin: 0;
+    color: var(--editor-ink);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .idle-hint {
+    margin: 0;
+    max-width: 340px;
+    color: color-mix(in srgb, var(--editor-ink) 60%, transparent);
+    font-size: 11px;
+    line-height: 1.7;
+  }
   .tok-keyword { color: var(--tok-keyword); font-weight: 600; }
   .tok-type { color: var(--tok-type); }
   .tok-literal { color: var(--tok-literal); }
@@ -347,29 +404,30 @@
     text-underline-offset: 3px;
   }
 
-  /* Findings rail: a quiet header, one card row per problem. */
+  /* Findings rail: a column of the same canvas, cut off by the same soft
+     hairline the gutter uses — not a card. The heading names it, and each row
+     keeps its own rhythm. */
   .problems {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    background: var(--bg);
     overflow: hidden;
+    padding: 10px 8px 0 10px;
+    border-left: 1px solid color-mix(in srgb, var(--editor-ink) 13%, transparent);
   }
+  .problems[hidden] { display: none; }
   .problems-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    min-height: 34px;
-    padding: 0 12px;
-    border-bottom: 1px solid var(--line);
+    min-height: 24px;
+    padding: 0 2px 8px;
     flex: none;
   }
   .problems-title {
     margin: 0;
-    color: var(--muted);
+    color: color-mix(in srgb, var(--editor-ink) 60%, transparent);
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -378,8 +436,8 @@
     min-width: 20px;
     padding: 1px 6px;
     border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--ink) 8%, transparent);
-    color: var(--muted);
+    background: color-mix(in srgb, var(--editor-ink) 9%, transparent);
+    color: color-mix(in srgb, var(--editor-ink) 62%, transparent);
     font-family: var(--mono);
     font-size: 10px;
     font-weight: 600;
@@ -396,26 +454,26 @@
     gap: 6px;
     flex: 1;
     min-height: 0;
-    padding: 8px;
+    padding: 0 0 4px;
     overflow: auto;
   }
   .problem-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 2px;
   }
   .problem-row {
     display: flex;
     flex-direction: column;
     gap: 2px;
     width: 100%;
-    padding: 7px 9px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    background: var(--surface);
+    padding: 7px 8px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
     text-align: left;
   }
-  .problem-row:hover { border-color: color-mix(in srgb, var(--ink) 26%, transparent); }
+  .problem-row:hover { background: color-mix(in srgb, var(--editor-ink) 7%, transparent); }
   .problem-row:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 1px;
@@ -427,7 +485,7 @@
     font-variant-numeric: tabular-nums;
   }
   .problem-message {
-    color: var(--ink);
+    color: var(--editor-ink);
     font-size: 11px;
     line-height: 1.45;
     overflow-wrap: anywhere;
@@ -435,21 +493,23 @@
   .problems-empty {
     margin: auto;
     padding: 16px 12px;
-    color: var(--muted);
+    color: color-mix(in srgb, var(--editor-ink) 58%, transparent);
     font-size: 11px;
     text-align: center;
   }
   .problems-note {
     margin: 0;
-    padding: 7px 9px;
-    border-top: 1px solid var(--line);
-    color: var(--muted);
+    padding: 7px 2px;
+    color: color-mix(in srgb, var(--editor-ink) 58%, transparent);
     font-size: 11px;
     line-height: 1.45;
     flex: none;
   }
 
-  /* Status bar: what the last action said, the first finding, the caret. */
+  /* Status bar: what the last action said, then the first finding, the size of
+     the buffer and the caret — one place for everything the editor reports.
+     The lower chrome strip, matched to the band above so the canvas reads as
+     the page between them. */
   .statusbar {
     display: flex;
     align-items: center;
@@ -457,11 +517,11 @@
     min-height: 30px;
     padding: 0 16px;
     border-top: 1px solid var(--line);
-    margin-top: 8px;
     color: var(--muted);
     font-size: 11px;
     flex: none;
   }
+  .status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .status.ok { color: var(--success); }
   .status.bad { color: var(--danger); }
   .status-right {
@@ -472,12 +532,16 @@
     min-width: 0;
   }
   .finding {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--danger);
   }
-  .finding.clean { color: var(--muted); }
+  .counts {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
   #position {
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
@@ -492,17 +556,34 @@
     white-space: nowrap;
   }
 
+  /* Too narrow for two columns: the rail takes the lower band and the canvas
+     boundary turns horizontal — the same soft hairline, the same column. */
   @media (max-width: 720px) {
     .workspace {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr) minmax(112px, 34%);
-      gap: 8px;
+      gap: 0;
     }
-    .toolbar-note { display: none; }
+    .workspace[data-rail="closed"] { grid-template-rows: minmax(0, 1fr); }
+    .problems {
+      padding: 8px 12px 0;
+      border-left: 0;
+      border-top: 1px solid color-mix(in srgb, var(--editor-ink) 13%, transparent);
+    }
+    .problems-head { padding: 0 2px 6px; }
+  }
+  /* Too narrow for one row: the identity keeps the top, the choices and tools
+     share the row below rather than squeezing a select off the edge. */
+  @media (max-width: 640px) {
+    .doc-head { flex-wrap: wrap; row-gap: 4px; padding-top: 5px; padding-bottom: 5px; }
+    body:not([data-mode="menu"]) .doc-id { flex-basis: 100%; }
+    /* The mark belongs to a one-row band; once the band wraps it would read as
+       a rule between the two rows instead. */
+    .doc-id::after { display: none; }
+    .doc-options { margin-left: 0; flex: 1 1 auto; }
   }
   @media (max-height: 520px) {
-    .doc-head { height: 40px; }
-    .toolbar { min-height: 34px; }
+    .doc-head { min-height: 40px; }
     .statusbar { min-height: 26px; }
   }
   @media (prefers-reduced-motion: no-preference) {
@@ -520,6 +601,20 @@
       </svg>
       <span class="doc-kind">SQL</span>
       <h1 class="doc-title" id="doc-title">等待条目…</h1>
+    </div>
+    <div class="doc-options" role="group" aria-label="SQL 排版选项">
+      <label class="field">
+        <span class="sr-only">方言</span>
+        <select id="dialect" aria-label="SQL 方言" title="SQL 方言"></select>
+      </label>
+      <label class="field">
+        <span class="sr-only">目标行宽</span>
+        <select id="width" aria-label="目标行宽" title="目标行宽">
+          <option value="80" selected>80 列</option>
+          <option value="100">100 列</option>
+          <option value="120">120 列</option>
+        </select>
+      </label>
     </div>
     <div class="doc-actions">
       <button type="button" class="action primary" id="format" title="按 SQL Style Guide 美化（⌘⇧F）" aria-label="美化 SQL">
@@ -560,33 +655,21 @@
     </div>
   </header>
 
-  <div class="toolbar" role="group" aria-label="SQL 排版选项">
-    <label class="field">方言
-      <select id="dialect" aria-label="SQL 方言"></select>
-    </label>
-    <label class="field">目标行宽
-      <select id="width" aria-label="目标行宽">
-        <option value="80" selected>80 列</option>
-        <option value="100">100 列</option>
-        <option value="120">120 列</option>
-      </select>
-    </label>
-    <span class="toolbar-note">关键字大写、子句右对齐，按 SQL Style Guide</span>
-    <span class="toolbar-spacer"></span>
-    <span class="counts" id="counts">0 行</span>
-  </div>
-
-  <main class="workspace">
+  <main class="workspace" id="workspace" data-rail="closed">
     <div class="editor-pane">
       <div class="gutter" id="gutter" aria-hidden="true"><div class="gutter-inner" id="gutter-inner"></div></div>
       <div class="code-surface">
         <pre class="highlight" id="highlight" aria-hidden="true"></pre>
         <textarea class="code-input" id="editor" spellcheck="false" autocomplete="off"
-          autocapitalize="off" wrap="soft" placeholder="打开一条 SQL 条目后，在这里编辑。"
+          autocapitalize="off" wrap="soft"
           aria-label="SQL 文本" aria-describedby="status finding"></textarea>
+        <div class="idle" id="idle">
+          <p class="idle-title" id="idle-title">等待条目…</p>
+          <p class="idle-hint" id="idle-hint">从剪贴坞打开一条 SQL 条目后，在这里编辑。</p>
+        </div>
       </div>
     </div>
-    <aside class="problems" aria-label="语法问题">
+    <aside class="problems" id="problems" aria-label="语法问题" hidden>
       <div class="problems-head">
         <h2 class="problems-title">问题</h2>
         <span class="problem-count" id="problem-count" aria-label="问题数量">0</span>
@@ -603,6 +686,7 @@
     <span class="status" id="status" role="status" aria-live="polite"></span>
     <div class="status-right">
       <span class="finding clean" id="finding"></span>
+      <span class="counts" id="counts">1 行 · 0 字符</span>
       <span id="position">1:1</span>
     </div>
   </footer>
