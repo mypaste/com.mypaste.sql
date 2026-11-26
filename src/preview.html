@@ -198,6 +198,10 @@
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   }
   .doc-close .icon { width: 13px; height: 13px; }
+  /* A menu page sits inside the host's tab and canvas (D-1234): closing the
+     window is the host's own control, and a second X would do the same thing
+     from inside the page. */
+  body[data-mode="menu"] .doc-close { display: none; }
 
   /* Toolbar: the layout choices, one row of 28px controls. */
   .toolbar {

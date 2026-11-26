@@ -473,7 +473,10 @@ async function runCopy(): Promise<void> {
     return;
   }
   const result = await bridge.copy(text);
-  if (result.ok) setStatus("已复制到剪贴板", "ok");
+  // A menu page's copy is also the record (D-1234); a surface's copy of an
+  // item that already exists is just the clipboard.
+  const done = bridge.menu ? "已复制，并记成一条新记录" : "已复制到剪贴板";
+  if (result.ok) setStatus(done, "ok");
   else setStatus(result.message ?? "复制失败", "bad");
 }
 
@@ -521,6 +524,17 @@ editor.addEventListener("keydown", (event) => {
     event.preventDefault();
     runFormat();
   }
+});
+
+// A menu page has no entry (D-1234): the reader types or pastes SQL and the
+// copy writes both the clipboard and a new record. The host tab already names
+// the page, so the header drops its waiting title for the start hint.
+bridge.onMenu(() => {
+  document.body.dataset.mode = "menu";
+  docTitle.textContent = "SQL";
+  document.title = "SQL";
+  setStatus("粘贴或输入 SQL；复制会记成一条新记录");
+  editor.focus();
 });
 
 bridge.onItem(({ item }) => {

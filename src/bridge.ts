@@ -28,9 +28,22 @@ export interface SurfaceBridge {
   readonly delivery: SurfaceDelivery | null;
   /** Registers the one receiver for the delivery; it fires at most once. */
   onItem(listener: (delivery: SurfaceDelivery) => void): void;
+  /**
+   * True once the host mounted this page as a settings menu page (D-1234):
+   * it has no item, so the page draws its own idle state, and only the copy
+   * request is answered — save and the registry are not in that channel.
+   */
+  readonly menu: boolean;
+  /** Registers the one receiver for the menu notice; at most once. */
+  onMenu(listener: () => void): void;
   copy(text: string): Promise<BridgeResult>;
   /** Asks the host to close the surface; the page owns the card (D-1097). */
   close(): void;
+}
+
+/** The host's first message to a menu page, before the theme (D-1234). */
+function isMenuMode(data: unknown): boolean {
+  return isRecord(data) && data.v === 1 && data.type === "menu";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,9 +113,11 @@ function parseItem(data: unknown): SurfaceTextItem | null {
 export function connectSurface(): SurfaceBridge {
   let delivery: SurfaceDelivery | null = null;
   const listeners: ((delivery: SurfaceDelivery) => void)[] = [];
+  const menuListeners: (() => void)[] = [];
   const pending = new Map<number, (result: ResultMessage) => void>();
   let nextRequest = 1;
   let delivering = false;
+  let menu = false;
 
   function post(message: unknown): void {
     parent.postMessage(message, "*");
@@ -129,6 +144,11 @@ export function connectSurface(): SurfaceBridge {
   window.addEventListener("message", (event) => {
     if (event.source !== parent) return;
     const data = event.data;
+    if (isMenuMode(data)) {
+      menu = true;
+      for (const listener of menuListeners.splice(0)) listener();
+      return;
+    }
     const item = parseItem(data);
     if (item) {
       deliver(item);
@@ -161,6 +181,13 @@ export function connectSurface(): SurfaceBridge {
     onItem(listener) {
       if (delivery !== null) listener(delivery);
       else listeners.push(listener);
+    },
+    get menu() {
+      return menu;
+    },
+    onMenu(listener) {
+      if (menu) listener();
+      else menuListeners.push(listener);
     },
     copy(text) {
       return request({ type: "copy", text });
